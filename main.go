@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	htmlquery "github.com/antchfx/xquery/html"
 )
@@ -69,9 +70,9 @@ func main() {
 	if len(titleNode) > 0 {
 		title = titleNode[0].FirstChild.Data
 	} else {
-		fmt.Println("Title not found, use viewkey.")
+		log.Println("Title not found, use viewkey.")
 	}
-	fmt.Println("Title: ", title)
+	log.Println("Title: ", title)
 
 	// выгребаем количество страниц
 	// xpath //*[@id="info"]/div[1]
@@ -114,27 +115,79 @@ func main() {
 		wg.Add(1)
 
 		go func(u string, fName string) {
+			// дефер для завершения wg
 			defer wg.Done()
-			//fmt.Println("Downloading: ", u)
-			resp, err := http.Get(u)
-			if err != nil {
+			var resp *http.Response
+			var err error
+
+			// цикл запроса к серверу
+		LOOP:
+			for retr := 10; retr > 0; retr-- {
+				resp, err = http.Get(u)
+				// выходим из рутины если ошибка
+				if err != nil {
+					return
+				}
+
+				// если контекст - картинка, то прерываемся, что бы сохранить в файл
+				if strings.HasPrefix(resp.Header["Content-Type"][0], "image") {
+					break LOOP
+				}
+				// если же нет - подождём немного и снова запросим
+				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
+				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
+				if retr <= 0 {
+					log.Printf("Can't download %s file after %d retry.\n", fName, retr)
+					return
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			// проверим размер ответа
+			l, ok := resp.Header["Content-Length"]
+			if !ok {
+				log.Printf("Content length of file '%s' is nil.\n", fName)
 				return
 			}
-			//fmt.Println("Status: ", resp.Status)
+
+			// парсим в int64
+			cLen, err := strconv.ParseInt(l[0], 10, 64)
+			if err != nil {
+				// если не удалось - значит какая-то жопа :)
+				log.Printf("Content length of file '%s' is incorrect: %v\n", fName, err)
+			}
+
+			// смотрим есть ли такой файл уже на диске
+			if stat, err := os.Stat(fName); err == nil {
+				// если есть - смотрим размер
+				fSize := stat.Size()
+				// совпадает с Content-Length - смело выходим
+				if fSize == cLen {
+					log.Printf("File '%s' already exist.\n", fName)
+					return
+				}
+				// если не совпадает - удалим и пойдём перекачивать
+				err = os.Remove(fName)
+				if err != nil {
+					log.Printf("Error delete old file '%s'\n", fName)
+					return
+				}
+			}
 
 			defer resp.Body.Close()
+
 			f, err := os.OpenFile(fName, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				fmt.Println("Can't create file: ", fName)
+				log.Println("Can't create file: ", fName)
 				return
 			}
 
 			if _, err = io.Copy(f, resp.Body); err != nil {
-				fmt.Printf("Can't download file %v, error: %v\n", fName, err)
+				log.Printf("Can't download file %v, error: %v\n", fName, err)
 			}
 			log.Printf("Done downloading file %v\n", fName)
 		}(pUrl, fName)
 	}
-	fmt.Printf("Waiting...")
+	log.Printf("Waiting...\n")
 	wg.Wait()
 }
