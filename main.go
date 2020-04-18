@@ -11,12 +11,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	htmlquery "github.com/antchfx/xquery/html"
+	pb "github.com/schollz/progressbar"
 )
 
+var DEBUG bool
+
 func main() {
+	DEBUG = false
+
 	// в качестве параметра принимаем либо url, либо ключ
 	if len(os.Args) == 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
 		fmt.Printf("Use: %s <url>\n\n", filepath.Base(os.Args[0]))
@@ -24,12 +28,12 @@ func main() {
 	}
 
 	// url должен иметь вид:
-	// https://9hentai.com/g/60037/
+	// https://9hentai.com/g/600/
 
 	var phurl string
 	// если запущено без параметров - читаем url из ввода
 	if len(os.Args) < 2 {
-		fmt.Print("Введите URL: ")
+		fmt.Print("Enter URL: ")
 		fmt.Scan(&phurl)
 	} else {
 		// если задан - из аргументов строки
@@ -70,9 +74,12 @@ func main() {
 	if len(titleNode) > 0 {
 		title = titleNode[0].FirstChild.Data
 	} else {
-		log.Println("Title not found, use viewkey.")
+		log.Println("Title not found, use number.")
 	}
 	log.Println("Title: ", title)
+
+	// заменим, если есть, символы разделения путей OS
+	title = strings.ReplaceAll(title, string(os.PathSeparator), ".")
 
 	// выгребаем количество страниц
 	// xpath //*[@id="info"]/div[1]
@@ -108,15 +115,20 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	bar := pb.New(pCount)
+
 	for i := 1; i <= pCount; i++ {
+		// формируем ссылку на картинку
 		fName := fmt.Sprint(i) + ".jpg"
 		pUrl := picsUrl + "/" + fName
 
 		wg.Add(1)
 
+		// go routin-а на скачивание
 		go func(u string, fName string) {
 			// дефер для завершения wg
 			defer wg.Done()
+
 			var resp *http.Response
 			var err error
 
@@ -133,28 +145,26 @@ func main() {
 				if strings.HasPrefix(resp.Header["Content-Type"][0], "image") {
 					break LOOP
 				}
+				// закроем ответ от сервера
+				resp.Body.Close()
 				// если же нет - подождём немного и снова запросим
 				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
 				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
+				Debug(fmt.Sprintf("Retry %v of file '%v'\n", 10-retr, fName))
 				if retr <= 0 {
 					log.Printf("Can't download %s file after %d retry.\n", fName, retr)
 					return
 				}
-				time.Sleep(100 * time.Millisecond)
+				//time.Sleep(100 * time.Millisecond)
 			}
+
+			defer resp.Body.Close()
 
 			// проверим размер ответа
-			l, ok := resp.Header["Content-Length"]
-			if !ok {
+			cLen := resp.ContentLength
+			if cLen == 0 {
 				log.Printf("Content length of file '%s' is nil.\n", fName)
 				return
-			}
-
-			// парсим в int64
-			cLen, err := strconv.ParseInt(l[0], 10, 64)
-			if err != nil {
-				// если не удалось - значит какая-то жопа :)
-				log.Printf("Content length of file '%s' is incorrect: %v\n", fName, err)
 			}
 
 			// смотрим есть ли такой файл уже на диске
@@ -163,18 +173,18 @@ func main() {
 				fSize := stat.Size()
 				// совпадает с Content-Length - смело выходим
 				if fSize == cLen {
-					log.Printf("File '%s' already exist.\n", fName)
+					Debug(fmt.Sprintf("File '%s' already exist.\n", fName))
+					// обновляем бар перед выходом
+					bar.Add(1)
 					return
 				}
 				// если не совпадает - удалим и пойдём перекачивать
 				err = os.Remove(fName)
 				if err != nil {
-					log.Printf("Error delete old file '%s'\n", fName)
+					log.Printf("The file size does not match. Error delete old file '%s'\n", fName)
 					return
 				}
 			}
-
-			defer resp.Body.Close()
 
 			f, err := os.OpenFile(fName, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -185,9 +195,16 @@ func main() {
 			if _, err = io.Copy(f, resp.Body); err != nil {
 				log.Printf("Can't download file %v, error: %v\n", fName, err)
 			}
-			log.Printf("Done downloading file %v\n", fName)
+			Debug(fmt.Sprintf("Done downloading file %v\n", fName))
+			// обновляем бар перед выходом
+			bar.Add(1)
 		}(pUrl, fName)
 	}
-	log.Printf("Waiting...\n")
 	wg.Wait()
+}
+
+func Debug(s string) {
+	if DEBUG {
+		log.Println(s)
+	}
 }
