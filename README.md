@@ -3,7 +3,4 @@
 ## Using:
 
 - ./9hentai https://9hentai.com/g/NUMBER/
-- ./9hentai
-
-	Enter URL:
-
+- ./9hentai < urls.txt

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,47 +17,62 @@ import (
 )
 
 type dnldr struct {
-	DEBUG  bool
 	bookId string
 	pCount int
 	title  string
 	mUrl   string
 }
 
-func (d *dnldr) setDebug() {
-	d.DEBUG = true
-}
-
-func (d *dnldr) getParam(u string) {
+func (d *dnldr) getParam(u string) error {
 	// url должен иметь вид:
 	// https://9hentai.com/g/600/
 
+	// если не начинается с http - значит уже неверный url
+	if !strings.HasPrefix(u, "http") {
+		return errors.New("URL has not beginning http.")
+	}
+
+	// сохраняем url
 	d.mUrl = u
-	d.getBookId()
-	d.getTitle()
+
+	// находим bookid или вернём ошибку
+	if err := d.getBookId(); err != nil {
+		return err
+	}
+
+	// находим название, или ошибка
+	if err := d.getTitle(); err != nil {
+		return err
+	}
+
+	// вернём nil если всё хорошо
+	return nil
 }
 
-func (d *dnldr) getBookId() {
+func (d *dnldr) getBookId() error {
 	// парсим url
 	u, err := url.Parse(d.mUrl)
 	if err != nil {
-		log.Fatal("URL incorrect: ", err)
+		Debug(fmt.Sprintln("URL parse error: ", err))
+		return err
 	}
 
 	// получаем ключ
 	p := strings.Split(u.Path, "/")
 	if len(p) != 4 {
-		log.Fatal("URL incorrect: ", err)
+		return errors.New(fmt.Sprintf("URL has not key (error: %v) in path: '%v'", err, d.mUrl))
 	}
 
 	d.bookId = p[len(p)-2]
+	return nil
 }
 
-func (d *dnldr) getTitle() {
+func (d *dnldr) getTitle() error {
 	// запрашиваем страницу
 	resp, err := http.Get(d.mUrl)
 	if err != nil {
-		log.Fatal("Get URL error: ", err)
+		Debug(fmt.Sprintln("Get URL error: ", err))
+		return err
 	}
 
 	// получаем тело страницы
@@ -64,7 +80,8 @@ func (d *dnldr) getTitle() {
 	defer resp.Body.Close()
 	doc, err := htmlquery.Parse(resp.Body)
 	if err != nil {
-		log.Fatal("Parse HTML Error: ", err)
+		Debug(fmt.Sprintln("Parse HTML error: ", err))
+		return err
 	}
 
 	// получаем название манги //*[@id="info"]/h1
@@ -84,7 +101,8 @@ func (d *dnldr) getTitle() {
 	// xpath //*[@id="info"]/div[1]
 	pCountNode := htmlquery.Find(doc, "//*[@id=\"info\"]/div[1]")
 	if len(pCountNode) < 1 {
-		log.Fatal("Pages not found.")
+		Debug("Pages not found.")
+		return errors.New("Pages not found.")
 	}
 
 	pCountText := pCountNode[0].FirstChild.Data
@@ -92,23 +110,28 @@ func (d *dnldr) getTitle() {
 	d.pCount, err = strconv.Atoi(p[0])
 
 	if err != nil {
-		log.Fatal("Can't convert to int.")
+		Debug("Can't convert to int.")
+		return errors.New("Can't convert to int.")
 	}
+	return nil
 }
 
-func (d *dnldr) download() {
+func (d *dnldr) download() error {
 
 	// создаём директорий
 	err := os.Mkdir(d.title, 0750)
 	if err != nil && !os.IsExist(err) {
-		log.Fatal("Can't make dir: ", err)
+		Debug(fmt.Sprintln("Can't make dir: ", err))
+		return err
 	}
 
 	// переходим в него
 	err = os.Chdir(d.title)
 	if err != nil {
-		log.Fatal("Can't change dir.")
+		Debug("Can't change dir.")
+		return errors.New("Can't change dir.")
 	}
+	defer os.Chdir("..")
 
 	// запускаем рутины на каждый файл закачки и ждём, пока они закончатся
 	picsUrl := "https://cdn.9hentai.com/images/" + d.bookId
@@ -150,7 +173,7 @@ func (d *dnldr) download() {
 				// если же нет - подождём немного и снова запросим
 				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
 				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
-				d.Debug(fmt.Sprintf("Retry %v of file '%v'\n", 10-retr, fName))
+				Debug(fmt.Sprintf("Retry %v of file '%v'\n", 10-retr, fName))
 				if retr <= 0 {
 					log.Printf("Can't download %s file after %d retry.\n", fName, retr)
 					return
@@ -173,7 +196,7 @@ func (d *dnldr) download() {
 				fSize := stat.Size()
 				// совпадает с Content-Length - смело выходим
 				if fSize == cLen {
-					d.Debug(fmt.Sprintf("File '%s' already exist.\n", fName))
+					Debug(fmt.Sprintf("File '%s' already exist.\n", fName))
 					// обновляем бар перед выходом
 					bar.Add(1)
 					return
@@ -195,17 +218,18 @@ func (d *dnldr) download() {
 			if _, err = io.Copy(f, resp.Body); err != nil {
 				log.Printf("Can't download file %v, error: %v\n", fName, err)
 			}
-			d.Debug(fmt.Sprintf("Done downloading file %v\n", fName))
+			Debug(fmt.Sprintf("Done downloading file %v\n", fName))
 			// обновляем бар перед выходом
 			bar.Add(1)
 		}(pUrl, fName)
 	}
 	wg.Wait()
-
+	fmt.Println()
+	return nil
 }
 
-func (d *dnldr) Debug(s string) {
-	if d.DEBUG {
+func Debug(s string) {
+	if DEBUG {
 		log.Println(s)
 	}
 }
