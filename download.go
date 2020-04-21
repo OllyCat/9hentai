@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,16 +27,8 @@ func (d *dnldr) getParam(u string) error {
 	// url должен иметь вид:
 	// https://9hentai.com/g/600/
 
-	// если не начинается с http - значит уже неверный url
-	if !strings.HasPrefix(u, "http") {
-		return errors.New("URL has not beginning http.")
-	}
-
-	// сохраняем url
-	d.mUrl = u
-
 	// находим bookid или вернём ошибку
-	if err := d.getBookId(); err != nil {
+	if err := d.getBookId(u); err != nil {
 		return err
 	}
 
@@ -49,21 +41,17 @@ func (d *dnldr) getParam(u string) error {
 	return nil
 }
 
-func (d *dnldr) getBookId() error {
-	// парсим url
-	u, err := url.Parse(d.mUrl)
-	if err != nil {
-		Debug(fmt.Sprintln("URL parse error: ", err))
-		return err
-	}
-
+func (d *dnldr) getBookId(u string) error {
 	// получаем ключ
-	p := strings.Split(u.Path, "/")
-	if len(p) != 4 {
-		return errors.New(fmt.Sprintf("URL has not key (error: %v) in path: '%v'", err, d.mUrl))
+	r := regexp.MustCompile("http.*9hentai.com/g/([0-9]+)")
+	p := r.FindStringSubmatch(u)
+
+	if len(p) != 2 {
+		return errors.New(fmt.Sprintf("URL has not key in path: '%v'", d.mUrl))
 	}
 
-	d.bookId = p[len(p)-2]
+	d.mUrl = p[0]
+	d.bookId = p[1]
 	return nil
 }
 
