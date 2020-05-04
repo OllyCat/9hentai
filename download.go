@@ -5,25 +5,27 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	htmlquery "github.com/antchfx/xquery/html"
 	pb "github.com/schollz/progressbar"
 )
 
-type dnldr struct {
+type DownStruct struct {
 	bookId string
 	pCount int
 	title  string
 	mUrl   string
 }
 
-func (d *dnldr) getParam(u string) error {
+func (d *DownStruct) getParam(u string) error {
 	// url должен иметь вид:
 	// https://9hentai.com/g/600/
 
@@ -41,7 +43,7 @@ func (d *dnldr) getParam(u string) error {
 	return nil
 }
 
-func (d *dnldr) getBookId(u string) error {
+func (d *DownStruct) getBookId(u string) error {
 	// получаем ключ
 	r := regexp.MustCompile("http.*9hentai.com/g/([0-9]+)")
 	p := r.FindStringSubmatch(u)
@@ -55,7 +57,7 @@ func (d *dnldr) getBookId(u string) error {
 	return nil
 }
 
-func (d *dnldr) getTitle() error {
+func (d *DownStruct) getTitle() error {
 	// запрашиваем страницу
 	resp, err := http.Get(d.mUrl)
 	if err != nil {
@@ -104,7 +106,9 @@ func (d *dnldr) getTitle() error {
 	return nil
 }
 
-func (d *dnldr) download() error {
+func (d *DownStruct) download() error {
+
+	rand.Seed(time.Now().UnixNano())
 
 	// создаём директорий
 	err := os.Mkdir(d.title, 0750)
@@ -145,7 +149,7 @@ func (d *dnldr) download() error {
 
 			// цикл запроса к серверу
 		LOOP:
-			for retr := 10; retr > 0; retr-- {
+			for retr := 100; retr > 0; retr-- {
 				resp, err = http.Get(u)
 				// выходим из рутины если ошибка
 				if err != nil {
@@ -166,7 +170,7 @@ func (d *dnldr) download() error {
 					log.Printf("Can't download %s file after %d retry.\n", fName, retr)
 					return
 				}
-				//time.Sleep(100 * time.Millisecond)
+				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 			}
 
 			defer resp.Body.Close()
