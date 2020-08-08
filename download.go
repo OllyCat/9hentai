@@ -201,7 +201,7 @@ func (d *DownStruct) download() error {
 				}
 			}
 
-			f, err := os.OpenFile(fName, os.O_CREATE|os.O_WRONLY, 0644)
+			f, err := os.Create(fName)
 			if err != nil {
 				log.Println("Can't create file: ", fName)
 				return
