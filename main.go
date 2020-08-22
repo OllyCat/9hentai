@@ -22,16 +22,11 @@ func main() {
 			if len(phurl) == 0 {
 				continue
 			}
-			if err := dl.getParam(phurl); err != nil {
-				log.Printf("Error: %v\n", err)
-				continue
-			}
+
 			// закачка
-			if err := dl.download(); err != nil {
+			if err := dl.Download(phurl); err != nil {
 				log.Printf("%v\n", err)
-			} else if err := dl.Compress(); err != nil {
-				// компрессия
-				log.Printf("Error: %v\n", err)
+				continue
 			}
 		}
 		os.Exit(0)
@@ -39,16 +34,11 @@ func main() {
 	// если заданы url-ы в ком строке, то итерируемся по ним
 	for _, phurl = range flag.Args() {
 
-		if err := dl.getParam(phurl); err != nil {
-			log.Printf("Error: %v\n", err)
+		// закачка
+		if err := dl.Download(phurl); err != nil {
+			log.Printf("%v\n", err)
 			continue
 		}
-		// закачка
-		if err := dl.download(); err != nil {
-			log.Printf("%v\n", err)
-		} else if err := dl.Compress(); err != nil {
-			// компрессия
-			log.Printf("Error: %v\n", err)
-		}
 	}
+	os.Exit(0)
 }

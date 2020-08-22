@@ -34,12 +34,12 @@ func (d *DownStruct) getParam(u string) error {
 	// https://9hentai.com/g/600/
 
 	// находим bookid или вернём ошибку
-	if err := d.getBookId(u); err != nil {
+	if err := d.GetBookId(u); err != nil {
 		return err
 	}
 
 	// находим название, или ошибка
-	if err := d.getTitle(); err != nil {
+	if err := d.GetTitle(); err != nil {
 		return err
 	}
 
@@ -47,7 +47,7 @@ func (d *DownStruct) getParam(u string) error {
 	return nil
 }
 
-func (d *DownStruct) getBookId(u string) error {
+func (d *DownStruct) GetBookId(u string) error {
 	// получаем ключ
 	r := regexp.MustCompile("http.*9hentai.com/g/([0-9]+)")
 	p := r.FindStringSubmatch(u)
@@ -61,7 +61,7 @@ func (d *DownStruct) getBookId(u string) error {
 	return nil
 }
 
-func (d *DownStruct) getTitle() error {
+func (d *DownStruct) GetTitle() error {
 	// запрашиваем страницу
 	resp, err := http.Get(d.mUrl)
 	if err != nil {
@@ -106,7 +106,12 @@ func (d *DownStruct) getTitle() error {
 	return nil
 }
 
-func (d *DownStruct) download() error {
+func (d *DownStruct) Download(phurl string) error {
+
+	// получаем параметры
+	if err := d.getParam(phurl); err != nil {
+		return err
+	}
 
 	// если файл уже существует - выходим
 	_, err := os.Stat(d.title + ".cbz")
@@ -127,13 +132,12 @@ func (d *DownStruct) download() error {
 	if err != nil {
 		return fmt.Errorf("Can't change dir: %w", err)
 	}
-	defer os.Chdir("..")
 
 	// запускаем рутины на каждый файл закачки и ждём, пока они закончатся
 	picsUrl := "https://cdn.9hentai.com/images/" + d.bookId
 
 	d.bar = pb.New(d.pCount)
-	d.bar.Describe("Download:")
+	d.bar.Describe("Downloading:")
 
 	// канал для ограничения количества одновременных закачек
 	c := make(chan int, 10)
@@ -235,13 +239,13 @@ func (d *DownStruct) download() error {
 	}
 	d.wg.Wait()
 	fmt.Println()
-	return nil
+	os.Chdir("..")
+	return d.compress()
 }
 
-func (d *DownStruct) Compress() error {
-	d.bar = pb.New(d.pCount)
+func (d *DownStruct) compress() error {
 	d.bar.Describe("Compression:")
-	defer d.bar.Finish()
+	d.bar.Set(1)
 
 	f, err := os.Create(d.title + ".cbz")
 	if err != nil {
@@ -290,5 +294,6 @@ func (d *DownStruct) Compress() error {
 		return fmt.Errorf("Error remove original dir: %w", err)
 	}
 
+	fmt.Println()
 	return nil
 }
