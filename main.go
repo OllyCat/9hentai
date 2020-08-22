@@ -7,13 +7,8 @@ import (
 	"os"
 )
 
-var DEBUG bool
-
 func main() {
 	var dl DownStruct
-
-	// дебагинг сообщений
-	flag.BoolVar(&DEBUG, "d", false, "for debug messages")
 
 	// в качестве параметра принимаем либо url, либо ключ
 	flag.Parse()
@@ -33,11 +28,9 @@ func main() {
 			}
 			// закачка
 			if err := dl.download(); err != nil {
-				log.Printf("Error: %v\n", err)
-			}
-
-			// компрессия
-			if err := dl.Compress(); err != nil {
+				log.Printf("%v\n", err)
+			} else if err := dl.Compress(); err != nil {
+				// компрессия
 				log.Printf("Error: %v\n", err)
 			}
 		}
@@ -52,10 +45,9 @@ func main() {
 		}
 		// закачка
 		if err := dl.download(); err != nil {
-			log.Printf("Error: %v\n", err)
-		}
-		// компрессия
-		if err := dl.Compress(); err != nil {
+			log.Printf("%v\n", err)
+		} else if err := dl.Compress(); err != nil {
+			// компрессия
 			log.Printf("Error: %v\n", err)
 		}
 	}

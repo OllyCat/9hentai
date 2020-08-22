@@ -25,6 +25,8 @@ type DownStruct struct {
 	pCount int
 	title  string
 	mUrl   string
+	bar    *pb.ProgressBar
+	wg     sync.WaitGroup
 }
 
 func (d *DownStruct) getParam(u string) error {
@@ -63,7 +65,6 @@ func (d *DownStruct) getTitle() error {
 	// запрашиваем страницу
 	resp, err := http.Get(d.mUrl)
 	if err != nil {
-		Debug(fmt.Sprintln("Get URL error: ", err))
 		return err
 	}
 
@@ -72,7 +73,6 @@ func (d *DownStruct) getTitle() error {
 	defer resp.Body.Close()
 	doc, err := htmlquery.Parse(resp.Body)
 	if err != nil {
-		Debug(fmt.Sprintln("Parse HTML error: ", err))
 		return err
 	}
 
@@ -93,7 +93,6 @@ func (d *DownStruct) getTitle() error {
 	// xpath //*[@id="info"]/div[1]
 	pCountNode := htmlquery.Find(doc, "//*[@id=\"info\"]/div[1]")
 	if len(pCountNode) < 1 {
-		Debug("Pages not found.")
 		return errors.New("Pages not found.")
 	}
 
@@ -102,7 +101,6 @@ func (d *DownStruct) getTitle() error {
 	d.pCount, err = strconv.Atoi(p[0])
 
 	if err != nil {
-		Debug("Can't convert to int.")
 		return fmt.Errorf("Can't convert to int: %w", err)
 	}
 	return nil
@@ -110,19 +108,23 @@ func (d *DownStruct) getTitle() error {
 
 func (d *DownStruct) download() error {
 
+	// если файл уже существует - выходим
+	_, err := os.Stat(d.title + ".cbz")
+	if err == nil {
+		return errors.New("Comix already exist")
+	}
+
 	rand.Seed(time.Now().UnixNano())
 
 	// создаём директорий
-	err := os.Mkdir(d.title, 0750)
+	err = os.Mkdir(d.title, 0750)
 	if err != nil && !os.IsExist(err) {
-		Debug(fmt.Sprintln("Can't make dir: ", err))
-		return err
+		return fmt.Errorf("Can't make dir: %w", err)
 	}
 
 	// переходим в него
 	err = os.Chdir(d.title)
 	if err != nil {
-		Debug("Can't change dir.")
 		return fmt.Errorf("Can't change dir: %w", err)
 	}
 	defer os.Chdir("..")
@@ -130,24 +132,33 @@ func (d *DownStruct) download() error {
 	// запускаем рутины на каждый файл закачки и ждём, пока они закончатся
 	picsUrl := "https://cdn.9hentai.com/images/" + d.bookId
 
-	var wg sync.WaitGroup
+	d.bar = pb.New(d.pCount)
+	d.bar.Describe("Download:")
 
-	bar := pb.New(d.pCount)
-	bar.Describe("Download:")
+	// канал для ограничения количества одновременных закачек
+	c := make(chan int, 10)
 
 	for i := 1; i <= d.pCount; i++ {
-		// формируем ссылку на картинку
-		fName := fmt.Sprint(i) + ".jpg"
-		pUrl := picsUrl + "/" + fName
 
-		wg.Add(1)
+		d.wg.Add(1)
 
+		// пишем в канал, если он полон - ожидаем пока не освободится
+		c <- i
 		// go routin-а на скачивание
-		go func(u string, fName string) {
+		go func(picsUrl string, i int) {
+			// освобождаем канал перед выходом
+			defer func() {
+				<-c
+			}()
+
+			// формируем ссылку на картинку
+			fName := fmt.Sprint(i) + ".jpg"
+			u := picsUrl + "/" + fName
+
 			// обновляем бар перед выходом
-			defer bar.Add(1)
+			defer d.bar.Add(1)
 			// дефер для завершения wg
-			defer wg.Done()
+			defer d.wg.Done()
 
 			var resp *http.Response
 			var err error
@@ -177,7 +188,6 @@ func (d *DownStruct) download() error {
 				// если же нет - подождём немного и снова запросим
 				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
 				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
-				Debug(fmt.Sprintf("Retry %v of file '%v'", (100 - retr), fName))
 				if retr <= 0 {
 					log.Printf("Can't download %s file after %d retry.", fName, retr)
 					return
@@ -200,9 +210,8 @@ func (d *DownStruct) download() error {
 				fSize := stat.Size()
 				// совпадает с Content-Length - смело выходим
 				if fSize == cLen {
-					Debug(fmt.Sprintf("File '%s' already exist.\n", fName))
 					// обновляем бар перед выходом
-					bar.Add(1)
+					d.bar.Add(1)
 					return
 				}
 				// если не совпадает - удалим и пойдём перекачивать
@@ -222,18 +231,17 @@ func (d *DownStruct) download() error {
 			if _, err = io.Copy(f, resp.Body); err != nil {
 				log.Printf("Can't download file %v, error: %v\n", fName, err)
 			}
-			Debug(fmt.Sprintf("Done downloading file %v\n", fName))
-		}(pUrl, fName)
+		}(picsUrl, i)
 	}
-	wg.Wait()
+	d.wg.Wait()
 	fmt.Println()
 	return nil
 }
 
 func (d *DownStruct) Compress() error {
-	bar := pb.New(d.pCount)
-	bar.Describe("Compression:")
-	defer bar.Finish()
+	d.bar = pb.New(d.pCount)
+	d.bar.Describe("Compression:")
+	defer d.bar.Finish()
 
 	f, err := os.Create(d.title + ".cbz")
 	if err != nil {
@@ -249,7 +257,7 @@ func (d *DownStruct) Compress() error {
 			return err
 		}
 
-		bar.Add(1)
+		d.bar.Add(1)
 
 		if info.IsDir() {
 			return nil
@@ -283,10 +291,4 @@ func (d *DownStruct) Compress() error {
 	}
 
 	return nil
-}
-
-func Debug(s string) {
-	if DEBUG {
-		log.Println(s)
-	}
 }
