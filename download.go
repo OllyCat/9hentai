@@ -250,8 +250,8 @@ func (d *DownStruct) Download(phurl string) error {
 }
 
 func (d *DownStruct) compress() error {
+	d.bar = pb.New(d.pCount)
 	d.bar.Describe("Compression:")
-	d.bar.Set(1)
 	err := d.bar.RenderBlank()
 
 	if err != nil {
