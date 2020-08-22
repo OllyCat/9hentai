@@ -10,6 +10,9 @@ import (
 func main() {
 	var dl DownStruct
 
+	// ключ для количества потоков
+	flag.IntVar(&dl.streams, "s", 10, "number of streams")
+
 	// в качестве параметра принимаем либо url, либо ключ
 	flag.Parse()
 

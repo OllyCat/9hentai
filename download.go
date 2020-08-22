@@ -21,12 +21,13 @@ import (
 )
 
 type DownStruct struct {
-	bookId string
-	pCount int
-	title  string
-	mUrl   string
-	bar    *pb.ProgressBar
-	wg     sync.WaitGroup
+	bookId  string
+	pCount  int
+	title   string
+	mUrl    string
+	streams int
+	bar     *pb.ProgressBar
+	wg      sync.WaitGroup
 }
 
 func (d *DownStruct) getParam(u string) error {
@@ -138,9 +139,14 @@ func (d *DownStruct) Download(phurl string) error {
 
 	d.bar = pb.New(d.pCount)
 	d.bar.Describe("Downloading:")
+	err = d.bar.RenderBlank()
+
+	if err != nil {
+		return fmt.Errorf("Error render bar: %w", err)
+	}
 
 	// канал для ограничения количества одновременных закачек
-	c := make(chan int, 10)
+	c := make(chan int, d.streams)
 
 	for i := 1; i <= d.pCount; i++ {
 
@@ -246,6 +252,11 @@ func (d *DownStruct) Download(phurl string) error {
 func (d *DownStruct) compress() error {
 	d.bar.Describe("Compression:")
 	d.bar.Set(1)
+	err := d.bar.RenderBlank()
+
+	if err != nil {
+		return fmt.Errorf("Error render bar: %w", err)
+	}
 
 	f, err := os.Create(d.title + ".cbz")
 	if err != nil {
