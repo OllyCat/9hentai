@@ -49,7 +49,7 @@ func (d *DownStruct) getBookId(u string) error {
 	p := r.FindStringSubmatch(u)
 
 	if len(p) != 2 {
-		return errors.New(fmt.Sprintf("URL has not key in path: '%v'", d.mUrl))
+		return fmt.Errorf("URL has not key in path: '%v'", d.mUrl)
 	}
 
 	d.mUrl = p[0]
@@ -101,7 +101,7 @@ func (d *DownStruct) getTitle() error {
 
 	if err != nil {
 		Debug("Can't convert to int.")
-		return errors.New("Can't convert to int.")
+		return fmt.Errorf("Can't convert to int: %w", err)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func (d *DownStruct) download() error {
 	err = os.Chdir(d.title)
 	if err != nil {
 		Debug("Can't change dir.")
-		return errors.New("Can't change dir.")
+		return fmt.Errorf("Can't change dir: %w", err)
 	}
 	defer os.Chdir("..")
 
@@ -141,6 +141,8 @@ func (d *DownStruct) download() error {
 
 		// go routin-а на скачивание
 		go func(u string, fName string) {
+			// обновляем бар перед выходом
+			defer bar.Add(1)
 			// дефер для завершения wg
 			defer wg.Done()
 
@@ -160,14 +162,21 @@ func (d *DownStruct) download() error {
 				if strings.HasPrefix(resp.Header["Content-Type"][0], "image") {
 					break LOOP
 				}
+
 				// закроем ответ от сервера
 				resp.Body.Close()
+
+				// если ответ сервера больше 404 - то нечего ловить, выходим
+				if resp.StatusCode == 404 {
+					return
+				}
+
 				// если же нет - подождём немного и снова запросим
 				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
 				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
-				Debug(fmt.Sprintf("Retry %v of file '%v'\n", 10-retr, fName))
+				Debug(fmt.Sprintf("Retry %v of file '%v'", (100 - retr), fName))
 				if retr <= 0 {
-					log.Printf("Can't download %s file after %d retry.\n", fName, retr)
+					log.Printf("Can't download %s file after %d retry.", fName, retr)
 					return
 				}
 				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
@@ -211,8 +220,6 @@ func (d *DownStruct) download() error {
 				log.Printf("Can't download file %v, error: %v\n", fName, err)
 			}
 			Debug(fmt.Sprintf("Done downloading file %v\n", fName))
-			// обновляем бар перед выходом
-			bar.Add(1)
 		}(pUrl, fName)
 	}
 	wg.Wait()
