@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,6 +133,7 @@ func (d *DownStruct) download() error {
 	var wg sync.WaitGroup
 
 	bar := pb.New(d.pCount)
+	bar.Describe("Download:")
 
 	for i := 1; i <= d.pCount; i++ {
 		// формируем ссылку на картинку
@@ -224,6 +227,61 @@ func (d *DownStruct) download() error {
 	}
 	wg.Wait()
 	fmt.Println()
+	return nil
+}
+
+func (d *DownStruct) Compress() error {
+	bar := pb.New(d.pCount)
+	bar.Describe("Compression:")
+	defer bar.Finish()
+
+	f, err := os.Create(d.title + ".cbz")
+	if err != nil {
+		return fmt.Errorf("Could not create archive: %w", err)
+	}
+	defer f.Close()
+
+	z := zip.NewWriter(f)
+	defer z.Close()
+
+	err = filepath.Walk(d.title, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		bar.Add(1)
+
+		if info.IsDir() {
+			return nil
+		}
+
+		rf, e := os.Open(path)
+		if e != nil {
+			return fmt.Errorf("Error open file: %w", e)
+		}
+		defer rf.Close()
+
+		zf, e := z.Create(path)
+		if e != nil {
+			return fmt.Errorf("Error archive file: %w", e)
+		}
+
+		_, e = io.Copy(zf, rf)
+		if e != nil {
+			return fmt.Errorf("Error copy file: %w", e)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("Error create cbz file: %w", err)
+	}
+
+	err = os.RemoveAll(d.title)
+	if err != nil {
+		return fmt.Errorf("Error remove original dir: %w", err)
+	}
+
 	return nil
 }
 

@@ -35,6 +35,11 @@ func main() {
 			if err := dl.download(); err != nil {
 				log.Printf("Error: %v\n", err)
 			}
+
+			// компрессия
+			if err := dl.Compress(); err != nil {
+				log.Printf("Error: %v\n", err)
+			}
 		}
 		os.Exit(0)
 	}
@@ -45,8 +50,12 @@ func main() {
 			log.Printf("Error: %v\n", err)
 			continue
 		}
+		// закачка
 		if err := dl.download(); err != nil {
-			// закачка
+			log.Printf("Error: %v\n", err)
+		}
+		// компрессия
+		if err := dl.Compress(); err != nil {
 			log.Printf("Error: %v\n", err)
 		}
 	}
