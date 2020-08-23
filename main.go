@@ -2,23 +2,31 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"log"
 	"os"
+
+	"github.com/spf13/pflag"
 )
 
 func main() {
 	var dl DownStruct
 
 	// ключ для количества потоков
-	flag.IntVar(&dl.streams, "s", 10, "number of streams")
+	pflag.IntVarP(&dl.streams, "strams", "s", 10, "number of streams")
 
-	// в качестве параметра принимаем либо url, либо ключ
-	flag.Parse()
+	// help
+	help := pflag.BoolP("help", "h", false, "help")
+
+	pflag.Parse()
+
+	if *help {
+		pflag.Usage()
+		os.Exit(0)
+	}
 
 	var phurl string
 	// если запущено без параметров - читаем url из ввода
-	if len(flag.Args()) < 1 {
+	if len(pflag.Args()) < 1 {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			phurl = scanner.Text()
@@ -35,7 +43,7 @@ func main() {
 		os.Exit(0)
 	}
 	// если заданы url-ы в ком строке, то итерируемся по ним
-	for _, phurl = range flag.Args() {
+	for _, phurl = range pflag.Args() {
 
 		// закачка
 		if err := dl.Download(phurl); err != nil {
