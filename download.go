@@ -176,6 +176,13 @@ func (d *DownStruct) Download(phurl string) error {
 			// цикл запроса к серверу
 		LOOP:
 			for retr := 100; retr > 0; retr-- {
+				req, err := http.NewRequest("GET", u, nil)
+				// выходим из рутины если ошибка
+				if err != nil {
+					return
+				}
+				req.Header.Set("Referer", "https://9hentai.com/")
+
 				resp, err = http.Get(u)
 				// выходим из рутины если ошибка
 				if err != nil {
@@ -183,8 +190,10 @@ func (d *DownStruct) Download(phurl string) error {
 				}
 
 				// если контекст - картинка, то прерываемся, что бы сохранить в файл
-				if strings.HasPrefix(resp.Header["Content-Type"][0], "image") {
-					break LOOP
+				if len(resp.Header) > 0 {
+					if strings.HasPrefix(resp.Header["Content-Type"][0], "image") {
+						break LOOP
+					}
 				}
 
 				// закроем ответ от сервера
