@@ -3,16 +3,23 @@ package main
 import (
 	"bufio"
 	"log"
+
+	//"net/http"
+	//_ "net/http/pprof"
 	"os"
 
 	"github.com/spf13/pflag"
 )
 
+//func init() {
+//go http.ListenAndServe("0.0.0.0:8080", nil)
+//}
+
 func main() {
 	var dl DownStruct
 
 	// ключ для количества потоков
-	pflag.IntVarP(&dl.streams, "strams", "s", 10, "number of streams")
+	pflag.IntVarP(&dl.streams, "strams", "s", 30, "number of streams")
 
 	// help
 	help := pflag.BoolP("help", "h", false, "help")
