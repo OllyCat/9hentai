@@ -181,43 +181,32 @@ func (d *DownStruct) Download(phurl string) error {
 			var resp *fasthttp.Response
 			var req *fasthttp.Request
 
-			// цикл запроса к серверу
-		LOOP:
-			for retr := 100; retr > 0; retr-- {
-				// подготавливаем req и resp для fasthttp
-				resp = fasthttp.AcquireResponse()
-				req = fasthttp.AcquireRequest()
-				req.Reset()
-				resp.Reset()
-				req.SetRequestURI(u)
-				// запрос
-				err = client.Do(req, resp)
-				// выходим из рутины если ошибка
-				if err != nil {
-					log.Printf("Error: %v", err)
-					return
-				}
+			// запрос к серверу
+			// подготавливаем req и resp для fasthttp
+			resp = fasthttp.AcquireResponse()
+			req = fasthttp.AcquireRequest()
+			req.Reset()
+			resp.Reset()
+			req.SetRequestURI(u)
+			// запрос
+			err = client.Do(req, resp)
+			// выходим из рутины если ошибка
+			if err != nil {
+				log.Printf("Error: %v", err)
+				return
+			}
 
-				// если контекст - картинка, то прерываемся, что бы сохранить в файл
-				content := resp.Header.Peek("Count-Type")
-				if bytes.HasPrefix(content, []byte("image")) {
-					break LOOP
-				}
+			// если ответ сервера больше 404 - то нечего ловить, выходим с сообщением
+			if resp.StatusCode() == fasthttp.StatusNotFound {
+				log.Printf("\nError: file %s does not exist.\n", fName)
+				return
+			}
 
-				// если ответ сервера больше 404 - то нечего ловить, выходим с сообщением
-				if resp.StatusCode() == fasthttp.StatusNotFound {
-					log.Printf("\nError: file %s does not exist.\n", fName)
-					return
-				}
-
-				// если же нет - подождём немного и снова запросим
-				// это нужно, так как часто получаем html в качестве ответа из-за сильной загрузки сервера
-				// если за RETR попыток не удалось - выходим, что бы не зависнуть совсем
-				if retr <= 0 {
-					log.Printf("Can't download %s file after %d retry.", fName, retr)
-					return
-				}
-				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+			// если контекст - картинка, то прерываемся, что бы сохранить в файл
+			content := resp.Header.ContentType()
+			if !bytes.HasPrefix(content, []byte("image")) {
+				log.Printf("\nDEBUG: Content type: %v in URL: %v\n", string(content), u)
+				return
 			}
 
 			// проверим размер ответа
