@@ -26,6 +26,7 @@ type DownStruct struct {
 	pCount  int
 	title   string
 	mUrl    string
+	mDomain string
 	streams int
 	bar     *pb.ProgressBar
 	wg      sync.WaitGroup
@@ -51,15 +52,16 @@ func (d *DownStruct) getParam(u string) error {
 
 func (d *DownStruct) GetBookId(u string) error {
 	// получаем ключ
-	r := regexp.MustCompile("http.*9hentai.com/g/([0-9]+)")
+	r := regexp.MustCompile("http.*//(9hentai.+)/g/([0-9]+)")
 	p := r.FindStringSubmatch(u)
 
-	if len(p) != 2 {
+	if len(p) != 3 {
 		return fmt.Errorf("URL has not key in path: '%v'", d.mUrl)
 	}
 
 	d.mUrl = p[0]
-	d.bookId = p[1]
+	d.mDomain = p[1]
+	d.bookId = p[2]
 	return nil
 }
 
@@ -141,7 +143,7 @@ func (d *DownStruct) Download(phurl string) error {
 	}
 
 	// запускаем рутины на каждый файл закачки и ждём, пока они закончатся
-	picsUrl := "https://cdn.9hentai.com/images/" + d.bookId
+	picsUrl := "https://cdn." + d.mDomain + "/images/" + d.bookId
 
 	// создаём бар
 	d.bar = pb.New(d.pCount)
