@@ -17,7 +17,7 @@ import (
 	"time"
 
 	htmlquery "github.com/antchfx/xquery/html"
-	pb "github.com/schollz/progressbar"
+	pb "github.com/schollz/progressbar/v3"
 	"github.com/valyala/fasthttp"
 )
 
